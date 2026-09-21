@@ -14,44 +14,45 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check ZIP file
+      - name: Find StudyPro ZIP
         run: |
-          echo "Files in repository:"
-          ls -lah
-          echo "ZIP files:"
-          find . -maxdepth 3 -type f -iname "*.zip" -print
+          echo "Looking for ZIP..."
+          find . -type f -iname "*.zip" -print
 
-      - name: Extract Android project
+      - name: Extract StudyPro project
         run: |
           ZIP_FILE=$(find . -maxdepth 3 -type f -iname "*.zip" -print -quit)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No ZIP file found."
+            echo "ERROR: StudyPro ZIP not found."
             exit 1
           fi
 
-          echo "Using ZIP: $ZIP_FILE"
+          echo "Using: $ZIP_FILE"
 
           mkdir -p android-project
           unzip -o "$ZIP_FILE" -d android-project
 
-          echo "Extracted files:"
-          find android-project -maxdepth 4 -type f | head -200
+          echo "Extracted project:"
+          find android-project -maxdepth 3 -type f -print
 
-      - name: Find Gradle project
-        id: find_project
+      - name: Find Android project
+        id: project
         run: |
-          GRADLEW=$(find android-project -type f -name "gradlew" -print -quit)
+          SETTINGS=$(find android-project -type f -name "settings.gradle" -print -quit)
 
-          if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew was not found inside the ZIP."
-            echo "The ZIP may not contain a complete Android Gradle project."
+          if [ -z "$SETTINGS" ]; then
+            SETTINGS=$(find android-project -type f -name "settings.gradle.kts" -print -quit)
+          fi
+
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: settings.gradle not found."
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$GRADLEW")
+          PROJECT_DIR=$(dirname "$SETTINGS")
 
-          echo "PROJECT_DIR=$PROJECT_DIR"
+          echo "Android project: $PROJECT_DIR"
           echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Set up Java 17
@@ -60,20 +61,19 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Gradle
+      - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
 
-      - name: Make Gradle executable
-        working-directory: ${{ steps.find_project.outputs.project_dir }}
-        run: chmod +x gradlew
-
-      - name: Build debug APK
-        working-directory: ${{ steps.find_project.outputs.project_dir }}
-        run: ./gradlew assembleDebug --stacktrace
-
-      - name: Show generated APK
+      - name: Build APK
+        working-directory: ${{ steps.project.outputs.project_dir }}
         run: |
-          echo "Searching for APK..."
+          gradle assembleDebug --stacktrace
+
+      - name: Find APK
+        run: |
+          echo "APK files:"
           find android-project -type f -name "*.apk" -print
 
       - name: Upload APK
